@@ -3,6 +3,7 @@ from urclToISA.operand import OpType
 from urclToISA.UTRX import Translation
 from urclToISA.program import Program
 if TYPE_CHECKING: from urclToISA.instruction import Instruction
+
 class Translator():
     def __init__(self, translations: dict[str, Translation]):
         self.translations = translations
@@ -10,22 +11,22 @@ class Translator():
     def substitute(self, ins: "Instruction"):
         translation = self.translations.get(ins.opcode)
         if translation is None:
-            return ""
+            return []
         body = ins.match(translation)
         if body is None:
-            return ""
+            return []
         for l,line in enumerate(body):
             for i in range(len(ins.operands)):
-                body[l] = body[l].replace(f"@{chr(65+i)}", ins.operands[i].toString())
+                body[l] = body[l].replace(f"@{chr(65+i)}", str(ins.operands[i]))
         return body
 
-    def substituteURCL(self, ins: "Instruction"):
+    def substitute_urcl(self, ins: "Instruction"):
         translation = self.translations.get(ins.opcode)
         if translation is None:
-            return ""
+            return None
         body = ins.match(translation)
         if body is None:
-            return "" #why return empty string? NoneType makes more sense in this context
+            return None
         sub = Program.parse(body)
         for i,instr in enumerate(sub.code):
             for o,opr in enumerate(instr.operands):
@@ -36,6 +37,6 @@ class Translator():
         return sub
 
     @staticmethod
-    def fromFile(filename):
-        translations = Translation.parseFile(filename)
+    def from_file(filename):
+        translations = Translation.parse_file(filename)
         return Translator(translations)

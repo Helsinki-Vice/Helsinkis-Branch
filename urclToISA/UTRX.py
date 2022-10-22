@@ -3,6 +3,61 @@ if TYPE_CHECKING:
   from urclToISA.operand import Operand
   from urclToISA.translator import Translation
 import copy
+import enum
+
+
+class PTC(enum.Enum):
+  "Parameter type codes, specify which types of arguments a Case may translate."
+  ANY                 = "A"
+  "A: Any"
+  REGISTER            = "R"
+  "R: Any register"
+  GENERAL_REGISTER    = "G"
+  "G: General purpose register (R1, R2, ...)"
+  VOLATILE_REGISTER   = "V"
+  "V: Volatile register (read once then value can be overwritten)"
+  ZERO                = "Z"
+  "Z: Zero register and/or constant 0"
+  STACK_POINTER       = "S"
+  "S: Stack pointer (falls under R)"
+  POINTER             = "P"
+  "P: Pointer (any G containing a label / memory address)"
+  SIGNED_INT_REGISTER = "N"
+  "N: Register containing signed integer"
+  IMMEDIATE           = "I"
+  "I: Any immediate"
+  IMMEDIATE_ADDRESS   = "M"
+  "M: Immediate memory address"
+  LABEL               = "L"
+  "L: Immediate label"
+  SIGNED_IMMEDIATE    = "C"
+  "C: Signed immediate (denoted by +/-)"
+  PORT                = "O"
+  "O: I/O port"
+
+  def from_str(self, char: str):
+    "Usage: 'L' -> PTC.PORT"
+    for ptc in PTC:
+      if ptc.value == char:
+        return ptc
+      else:
+        return None
+  
+  def is_subtype_of(self, parent: "PTC"):
+    "Returns True if self is a subtype of parent"
+    subtypes = PARAMETER_TYPE_CODE_HEIRARCHY_LUT.get(parent)
+    if subtypes:
+      return self in subtypes
+    else:
+      return False
+
+PARAMETER_TYPE_CODE_HEIRARCHY_LUT = {
+    PTC.ANY: [PTC.REGISTER, PTC.VOLATILE_REGISTER, PTC.STACK_POINTER, PTC.SIGNED_INT_REGISTER, PTC.GENERAL_REGISTER, PTC.ZERO, PTC.POINTER, PTC.IMMEDIATE, PTC.IMMEDIATE_ADDRESS, PTC.LABEL, PTC.SIGNED_IMMEDIATE, PTC.PORT],
+    PTC.REGISTER: [PTC.VOLATILE_REGISTER, PTC.STACK_POINTER, PTC.SIGNED_INT_REGISTER, PTC.GENERAL_REGISTER, PTC.ZERO, PTC.POINTER],
+    PTC.IMMEDIATE: [PTC.IMMEDIATE_ADDRESS, PTC.LABEL, PTC.SIGNED_IMMEDIATE, PTC.PORT],
+    PTC.GENERAL_REGISTER: [PTC.VOLATILE_REGISTER, PTC.SIGNED_INT_REGISTER, PTC.POINTER],
+    PTC.POINTER: [PTC.STACK_POINTER]
+}
 
 class Case():
   alphabet = "QWERTYUIOPASDFGHJKLZXCVBNM"
@@ -15,7 +70,7 @@ class Case():
     "P": ["S"]
   }
   types = "ARVSNGZPIMLCO"
-
+  
   def __init__(self, params: str, body: list[str], language="URCL"):
     self.params = copy.deepcopy(params).split()
     self.string = copy.deepcopy(params)
@@ -26,7 +81,7 @@ class Case():
   def match(operand: "Operand", param: str):
     invert = False
     typeMatch = False
-    readNum = False #
+    readNum = False
     readStr = False
     num = ""
     s = ""
@@ -64,7 +119,7 @@ class Case():
       if char == "!":
         invert = not invert
       if char in Case.types and not typeMatch:
-        if (char in operand.typeClass) != invert:
+        if (char in operand.type_class) != invert:
           typeMatch = True
           continue
       if char in "<>":
@@ -82,7 +137,7 @@ class Translation():
     self.cases = cases
     self.language = language
 
-  def toString(self):
+  def __str__(self):
     m = max(map(lambda a: len(a), self.description)) + 4
     out = "┌" + "─"*(m-2) + "┐"
     out += "\n│ " + f"{self.opcode:^{m-4}}" + " │"
@@ -91,7 +146,7 @@ class Translation():
     for line in self.description:
       out += "\n│ " + f"{line:<{m-4}}" + " │"
     out += "\n├" + "─"*(m-2) + "┤"
-    for case in self.cases:               #wut
+    for case in self.cases:
       out += "\n│ " + f"{self.opcode + ' :: ' + case.string:^{m-4}}" + " │"
       for line in case.code:
         out += "\n│ " + f"{line:<{m-4}}" + " │"
@@ -100,7 +155,7 @@ class Translation():
     return out
 
   @staticmethod
-  def parseDescriptions(unparsed: str):
+  def parse_descriptions(unparsed: list[str]):
     translations: dict[str, "Translation"] = {}
     desc = False
     for l, line in enumerate(unparsed):
@@ -122,12 +177,12 @@ class Translation():
         unparsed[l] = None
       elif " :: " in line and line[-1] == "{":
         if translations.get(line.split(" :: ")[0]) is None:
-          translations[line.split(" :: ")[0]] = copy.deepcopy(Translation(line.split(" :: ")[0], "URCL", "This instruction is undocumented. :("))
+          translations[line.split(" :: ")[0]] = copy.deepcopy(Translation(line.split(" :: ")[0], "URCL", ["This instruction is undocumented. :("]))
     unparsed = list(filter(None, unparsed))
     return translations, unparsed
 
   @staticmethod
-  def readFile(filename: str):
+  def read_file(filename: str):
     lines: list[str] = []
     with open(filename, "r") as f:
       for line in f:
@@ -135,7 +190,7 @@ class Translation():
     return lines
 
   @staticmethod
-  def readCases(translations: dict[str, "Translation"], unparsed: str):
+  def read_cases(translations: dict[str, "Translation"], unparsed: list[str]):
     body: list[str] = []
     opcode = ""
     params = "" 
@@ -157,8 +212,8 @@ class Translation():
     return translations
 
   @staticmethod
-  def parseFile(filename):
-    unparsed = Translation.readFile(filename)
-    translations, unparsed = Translation.parseDescriptions(unparsed)
-    translations = Translation.readCases(translations, unparsed)
+  def parse_file(filename):
+    unparsed = Translation.read_file(filename)
+    translations, unparsed = Translation.parse_descriptions(unparsed)
+    translations = Translation.read_cases(translations, unparsed)
     return translations

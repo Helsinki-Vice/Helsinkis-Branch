@@ -5,25 +5,34 @@ from colorama import init
 
 init(autoreset=True)
 
-headers = \
-"""
-BITS
-MINREG
-MINHEAP
-RUN
-MINSTACK
-""".splitlines()
+HEADER_TYPES = [
+    "BITS",
+    "MINREG",
+    "MINHEAP",
+    "RUN",
+    "MINSTACK"
+]
 
-Header = Enum("Header", " ".join(headers))
+class HeaderType(Enum):
+    BITS = "BITS"
+    MINREG = "MINREG"
+    MINHEAP = "MINHEAP"
+    RUN = "RUN"
+    MINSTACK = "MINSTACK"
+
+Header = Enum("Header", " ".join(HEADER_TYPES)) #old
 
 class Program():
-    def __init__(self, code:list[Instruction]=[], headers:dict[int, str]={}, regs:list[str]=[]):
+    def __init__(self, code:list[Instruction]=[], headers:dict[HeaderType, str]={}, regs:list[str]=[]):
         self.code = code
         self.headers = headers
         self.regs: list[str] = regs
+        "Register names"
         self.uid: int = 0
+        "Program.unique_labels uses this to count unique labels"
 
-    def makeRegsNumeric(self):
+    def make_regs_numeric(self):
+        "Renames the registers to be numeric strings ('1', '2', '3', ...)"
         for i,ins in enumerate(self.code):
             for o,opr in enumerate(ins.operands):
                 if opr.type == OpType.REGISTER and opr.value != "0":
@@ -31,14 +40,16 @@ class Program():
         for r,reg in enumerate(self.regs):
             self.regs[r] = str(r+1)
 
-    def primeRegs(self):
+    def prime_regs(self):
+        "Adds \" ' \" to the end of all register names"
         for r,reg in enumerate(self.regs):
             if reg != "0":
                 self.rename(reg, reg+"'")
             self.regs[r] = reg+"'"
 
 
-    def uniqueLabels(self, uid=0):
+    def unique_labels(self, uid=0) -> int:
+        "Appends a number to label names to make them unique, returns number of labels + starting uid"
         labels = {}
         # First pass update definitions
         for i,ins in enumerate(self.code):
@@ -53,63 +64,55 @@ class Program():
                     self.code[i].operands[o].value = labels[opr.value]
         return uid
 
-    def insertSub(self, program, index=-1):
-        self.uid = program.uniqueLabels(self.uid)
+    def insert_sub(self, program: "Program", index=-1):
+        self.uid = program.unique_labels(self.uid)
         self.replace(program, index)
 
-    def replace(self, program, index=-1):
+    def replace(self, program: "Program", index=-1):
         self.code[index:index+1] = program.code
         self.regs = list(set(self.regs + program.regs))
 
-    def insert(self, program, index=-1):
+    def insert(self, program: "Program", index=-1):
         self.code[index:index] = program.code
         self.regs = list(set(self.regs + program.regs))
 
     def rename(self, oldname: str, newname: str, type=OpType.REGISTER):
+        "Renames registers, does nothing if use change type=Optype.REGISTER"
+        operand_to_rename = None
         for i,ins in enumerate(self.code):
             for o,opr in enumerate(ins.operands):
                 if opr.type == type and opr.value == oldname:
                     self.code[i].operands[o].value = newname
-        if opr.type == OpType.REGISTER:
-            self.regs[self.regs.index(oldname)] = newname
+                    operand_to_rename = opr
+        if operand_to_rename:
+            if operand_to_rename.type == OpType.REGISTER:
+                self.regs[self.regs.index(oldname)] = newname
 
-    def unpackPlaceholders(self):
+    def unpack_placeholders(self):
         for i,ins in enumerate(self.code):
             for o,opr in enumerate(ins.operands):
                 if opr.type == OpType.OTHER:
                     if opr.value.isalpha() and len(opr.value) == 1:
                         self.code[i].operands[o] = opr.extra[opr.value]
 
-    def relativesToLabels(self):
+    def relatives_to_labels(self):
         for i,ins in enumerate(self.code):
             for o,opr in enumerate(ins.operands):
                 if opr.type == OpType.RELATIVE:
-                    self.code[i + int(opr.value)].labels.append(f"{ins.opcode}_{self.uid}")
+                    self.code[i + int(opr.value)].labels.append(Operand.parse(f".{ins.opcode}_{self.uid}"))
                     self.code[i].operands[o] = Operand.parse(f".{ins.opcode}_{self.uid}")
                     self.uid += 1
 
     @staticmethod
-    # The program is a list of strings
     def parse(program: list[str]):
-        headers: dict[int, str] = {}
+        headers: dict[HeaderType, str] = {}
         code: list[Instruction] = []
         regs: list[str] = []
-        skip = False
+        program = preprocess_source(str.join("\n", program)).splitlines()
         for line in program:
-            if "*/" in line:
-                skip = False
-                continue
-            elif skip:
-                continue
-            elif "/*" in line:
-                skip = True
-                continue
-            while "  " in line:
-                line = line.replace("  "," ")
-            line = line.split("//")[0]
-            header = Program.parseHeader(line)
+            header = Program.parse_header(line)
             if header is not None:
-                headers[header[0]] = header[1]
+                headers.update(header)
                 continue
             ins = Instruction.parse(line)
             if ins is None:
@@ -127,23 +130,61 @@ class Program():
         return Program(code, headers, regs)
 
     @staticmethod
-    def parseFile(filename: str):
+    def parse_file(filename: str):
         with open(filename, "r") as f:
             lines = [l.strip() for l in f]
         return Program.parse(lines)
 
     @staticmethod
-    def parseHeader(line: str):
-        line = line.split()
-        if len(line) < 2 or line[0] not in headers:
+    def parse_header(line: str):
+        words = line.split()
+        if len(words) < 2 or words[0] not in HEADER_TYPES:
             return None
-        try:
-            return (headers.index(line[0]), line[1:])
-        except:
-            return None
+        for header_type in HeaderType:
+            if words[0].upper() == header_type.name:
+                return {header_type: str.join(" ", words[1:])}
+        return None
 
-    def toString(self, indent=0):
-        return "\n".join(l.toString(indent=indent) for l in self.code)
+    def to_string(self, indent=0):
+        return "\n".join(l.to_string(indent=indent) for l in self.code)
     
     def toColour(self, indent=0):
-        return "\n".join(l.toColour(indent=indent) for l in self.code)
+        return "\n".join(l.to_colour(indent=indent) for l in self.code)
+
+def preprocess_source(source: str):
+
+    while "  " in source:
+        source = source.replace("  ", " ")
+    source = strip_singleline_comments(source)
+    source = strip_multiline_comments(source)
+
+    return source
+
+def strip_singleline_comments(source: str):
+    while "//" in source:
+        comment_start = source.index("//")
+        comment_end = comment_start
+        for char in source[comment_start:]:
+            if char == "\n"[0]:
+                c = char.encode("ascii")
+                break
+            else:
+                comment_end += 1
+        source = source[:comment_start] + source[comment_end:]
+
+    return source
+
+def strip_multiline_comments(source: str):
+
+    while "/*" in source:
+        comment_start = source.index("/*")
+        comment_end = comment_start + 2
+        for index in range(len(source[comment_start:])):
+            if source[comment_start+index:].startswith("*/"):
+                break
+            else:
+                comment_end += 1
+        
+        source = source[:comment_start] + source[comment_end:]
+
+    return source

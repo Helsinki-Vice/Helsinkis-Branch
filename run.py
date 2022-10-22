@@ -11,6 +11,12 @@
 # | And of course remember that this is a prototype and is not finished. :)   |
 # └───────────────────────────────────────────────────────────────────────────┘
 
+from urclToISA.program import HeaderType, preprocess_source
+from urclToISA.translator import Translator
+from urclToISA.UTRX import Translation
+import urclToISA.UTRX
+
+
 def main():
     from urclToISA.program import Program
     from urclToISA.translator import Translator
@@ -40,22 +46,22 @@ def main():
 
     start = timer()
 
-    main = Program.parseFile(filename)
-    translator = Translator.fromFile(URCLtranslations)
-    translatorISA = Translator.fromFile(ISAtranslations)
+    main = Program.parse_file(filename)
+    translator = Translator.from_file(URCLtranslations)
+    translatorISA = Translator.from_file(ISAtranslations)
 
     def translate(program: Program, trans: Translator):
         done = False
         while not done:
             done = True
             for l,ins in enumerate(program.code):
-                sub = trans.substituteURCL(ins)
-                if sub != "":
+                sub = trans.substitute_urcl(ins)
+                if sub:
                     while len(set(sub.regs + program.regs)) != len(sub.regs + program.regs):
-                        sub.primeRegs()
-                    sub.unpackPlaceholders()
+                        sub.prime_regs()
+                    sub.unpack_placeholders()
                     sub = translate(sub, trans)
-                    program.insertSub(sub, l)
+                    program.insert_sub(sub, l)
                     done = False
                     break
         return program
@@ -68,8 +74,8 @@ def main():
 
     main = translate(main, translator)
 
-    main.makeRegsNumeric()
-    main.relativesToLabels()
+    main.make_regs_numeric()
+    main.relatives_to_labels()
 
     end = timer()
 
@@ -78,7 +84,7 @@ def main():
         print(f"{filename} translated to {URCLtranslations}:")
         print(f"-"*30)
         if argv.Boring:
-            print(main.toString(indent=20))
+            print(main.to_string(indent=20))
         else:
             print(main.toColour(indent=20))
         print(f"-"*30)
@@ -103,7 +109,9 @@ def main():
     if argv.Output:
         with open(argv.Output, "w+") as f:
             for block in out:
-                f.write(block.toString() + "\n")
+                f.write(block.to_string() + "\n")
 
 if __name__ == "__main__":
     main()
+    #import unittest
+    #unittest.main("tests.test")

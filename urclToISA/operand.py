@@ -1,37 +1,23 @@
 from enum import Enum
 from enum import auto
 from colorama import Fore, Back, Style
+import typing
 
-# === Operand types ===
-# optypes = \
-# """
-# REGISTER
-# NUMBER
-# ADDRESS
-# LABEL                   this is bad
-# PORT
-# RELATIVE
-# NEGATIVE
-# STACKPTR
-# OTHER
-# """.splitlines()
-
-#OpType = Enum("OpType", " ".join(optypes))
 class OpType(Enum):
     REGISTER = auto()
     NUMBER = auto()
     ADDRESS = auto()
     LABEL = auto()
-    PORT = auto()#        better, now OpType is an actual type and not just int
+    PORT = auto()
     RELATIVE = auto()
     NEGATIVE = auto()
     STACKPTR = auto()
     OTHER = auto()
 
+
 class Operand():
     # ======== Static variables ========
 
-    # === Get symbol from type ===
     prefixes = {
         OpType.REGISTER: "$",
         OpType.ADDRESS:  "#",
@@ -41,6 +27,7 @@ class Operand():
         OpType.NEGATIVE: "-",
         OpType.OTHER:    "@",
     }
+    "Gets the operand prefix ($, #, %, ...) given an OpType"
 
     colours = {
         OpType.REGISTER: Fore.LIGHTCYAN_EX,
@@ -51,13 +38,13 @@ class Operand():
         OpType.NEGATIVE: Fore.RESET,
         OpType.OTHER:    Fore.RED,
     }
+    "Gets the syntax highlight color given an OpType"
 
-    # === Get type from symbol ===
-    reverse_prefixes = dict((v,k) for k,v in prefixes.items())
+    optype_from_prefix = dict((v,k) for k,v in prefixes.items())
+    "Gets OpType givin an operand prefix ($, #, %, ...)"
 
     # === Define special parsing methods for types ===
     special_types = [
-        # If special_types[n][0](operand_string) returns True, then operand_string's type is special_types[n][1]
         (lambda a: a[0].isnumeric(),                          OpType.NUMBER,   lambda a:a),
         (lambda a: a[0] == "0" and a[1].isalpha(),            OpType.NUMBER,   lambda a:str(int(a,base=0))),
         (lambda a: a[0].upper() == "M",                       OpType.ADDRESS,  lambda a:a[1:]),
@@ -65,34 +52,37 @@ class Operand():
         (lambda a: a == "SP",                                 OpType.STACKPTR, lambda :"SP"),
         (lambda a: a[0] == "+",                               OpType.NEGATIVE, lambda a: f"-{a}"),
     ]
+    "If special_types[n][0](operand_string) returns True, then operand_string's type is special_types[n][1]"
 
-    def __init__(self, type=OpType.NUMBER, value="", word=0, extra:dict[str]={}):
-        # Type: OpType.REGISTER, OpType.ADDRESS, OpType.LABEL, ...
+    def __init__(self, type=OpType.NUMBER, value="", word=0, extra:dict[str, typing.Any]={}):
         self.type = type
+        "OpType.REGISTER, OpType.ADDRESS, OpType.LABEL, ..."
         self.value = value
-        # For multi-word processing
         self.word = word
-        # Any extra information that may need to be stored
+        "For multi-word processing"
         self.extra = extra
-        self.setTypeclass()
+        "Any extra information that may need to be stored"
+        self.type_class = self.get_type_class()
 
     # ======== Static methods ========
     @staticmethod
-    def parse(operand: str):
+    def parse(operand: str) -> "Operand":
+        "Expects a clean input, no whitespace shenanigans"
         # Get the operand type
-        typ = Operand.reverse_prefixes.get(operand[0])
-        if typ is None:
+        t: "OpType | None" = Operand.optype_from_prefix.get(operand[0])
+        opr = None
+        if t is None:
             for sp_type in Operand.special_types:
                 try:
                     if sp_type[0](operand):
-                        typ: OpType = sp_type[1]
+                        t = sp_type[1]
                         opr = sp_type[2](operand)
                 except:
                     continue
         else:
-            if typ in Operand.prefixes.keys():
+            if t in Operand.prefixes.keys():
                 opr = operand[1:]
-        if typ is None:
+        if not t or not opr:
             raise ValueError(f"Cannot parse operand '{operand}', unknown type.")
 
         # Get word (for multiword code)
@@ -100,43 +90,44 @@ class Operand():
             word = int(opr.split("[")[1][:-1])
         else:
             word = 0
-        return Operand(typ, opr, word)
+        return Operand(t, opr, word)
 
     # ======== Operand methods ========
 
-    def setTypeclass(self):
-        typeClass = "A"
+    def get_type_class(self) -> str:
+        "Uses self.type and self.value to generate a UTRX parameter type string, see UTRX_syntax.txt"
+        type_class = "A"
         if self.type in [OpType.REGISTER]:
-            typeClass += "R"
+            type_class += "R"
             if self.value == "0" and self.type == OpType.REGISTER:
-                typeClass += "Z"
+                type_class += "Z"
             if self.value == "SP":
-                typeClass += "SP"
+                type_class += "SP"
             if self.value.isnumeric():
-                typeClass += "G"
+                type_class += "G"
         else:
-            typeClass += "I"
+            type_class += "I"
             if self.value == "0" and self.type == OpType.NUMBER:
-                typeClass += "Z"
+                type_class += "Z"
             if self.type == OpType.NEGATIVE:
-                typeClass += "C"
+                type_class += "C"
             if self.type == OpType.ADDRESS:
-                typeClass += "M"
+                type_class += "M"
             if self.type == OpType.LABEL:
-                typeClass += "L"
+                type_class += "L"
             if self.type == OpType.PORT:
-                typeClass += "O"
-        self.typeClass = typeClass
+                type_class += "O"
+        return type_class
 
-    def prefix(self):
+    def prefix(self) -> str:
         return Operand.prefixes.get(self.type, "")
 
-    def toString(self):
+    def __str__(self):
         out = f"{self.prefix()}{self.value}"
         if self.word: out += f"[{self.word}]"
         return out
 
-    def toColour(self):
+    def to_colour(self) -> str:
         out = f"{Operand.colours.get(self.type, Fore.RESET)}{self.prefix()}{self.value}{Style.RESET_ALL}"
         if self.word: out += f"[{self.word}]"
         return out

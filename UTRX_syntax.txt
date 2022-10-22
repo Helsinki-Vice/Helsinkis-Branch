@@ -1,0 +1,199 @@
+Parameter types are:
+  A - any
+  R - any register
+  G - general purpose register (R1, R2, ...)
+  V - volatile register (read once then value can be overwritten)
+  Z - zero register and/or constant 0
+  S - stack pointer (falls under R)
+  P - pointer (any G containing a label / memory address)
+  N - register containing signed integer
+  I - any immediate
+  M - immediate memory address
+  L - immediate label
+  C - signed immediate (denoted by +/-)
+
+Operands are:
+  T - temporary register chosen from the pool of free registers
+  S - stack pointer (not referred to as SP)
+
+Affixes:
+    Prefixes:
+      ! - negate condition
+      $ - match string (anything after this symbol is part of the string)
+      + - is unique amongst the parameters
+    Infixes:
+      <> - are interchangeable
+      == - are equal
+      != - are not equal
+      ~~ - are of the same type (register or immediate)
+      !~ - are not of the same type (register or immediate)
+
+#######################################
+
+It would be helpful if URCL allowed us to annotate operands in our code.
+
+Perhaps with a macro:
+    @TYPE R2 V
+    MLT R1 R2 R3
+
+This annotation would hold until it is re-defined later.
+
+If a compiler wants to ignore it, it can do. It's optional annotation with
+no real bearing on the function of the code. It just helps compilers optimise
+code a little.
+
+#######################################
+
+Parameters from left to right are referenced using A, B, C, D, ...
+
+An infix on the end of a definition with no parameter on the right
+will wrap around to parameter A.
+
+Example:
+    INS :: A A R !=
+Means:
+    INS takes 3 operands A, B, C where C is a register and C is not equal to A
+
+#######################################
+
+Example:
+    INS :: R R <> I
+Means:
+    INS takes 3 operands A, B, C where either
+    A and B are registers and C is an immediate or
+    A and C are registers and B is an immediate.
+Matches both:
+    INS R1 R2 .label
+    INS R1 .label R2 // .label and R2 would be swapped before translation.
+But not:
+    INS R1 R2 R3
+
+#######################################
+
+Example:
+    INS :: A == A
+Means:
+    INS takes 2 operands A, B where A must equal B.
+Matches both:
+    INS R1 R1
+    INS .label .label
+But not:
+    INS R1 R2
+    INS .label .label2
+
+#######################################
+
+Types can be OR'd together by adding more letters.
+The ! prefix inverts all letters making it not A and not B and not C...
+
+Example:
+    INS :: R ZSI !ZSI
+Means:
+    INS takes 3 operands A, B, C where A is a register, 
+    B is the zero reg, the SP, or an immediate and
+    C is not the zero reg, not the SP, and not an immediate.
+
+#######################################
+
+Format for definition:
+
+INS :: Type1 Type2 Type3
+{
+    // ... URCL code ...
+}
+
+#######################################
+
+Cases are matched from top to bottom, like a switch statement.
+
+#######################################
+
+You can use temporary registers in your URCL code by stating T1, T2, T3 etc.
+You can use real registers in your URCL code like normal by stating R0, R1, R2 etc.
+
+#######################################
+
+You can specify specific operands by using $.
+
+Example:
+    INS A A $15
+Means:
+    INS takes 3 operands A, B, C where C is the number 15.
+
+Example:
+    INS A $R1
+Means:
+    INS takes 2 operands A, B, where B is the register R1.
+
+#######################################
+
+For the sake of allowing concise and organised files, you can write like this:
+
+INS :: R A A {ADD A B C; INC A A;}
+
+Each URCL statement must end with a semicolon when inline.
+Left-hand whitespace between semicolons/newlines and statements gets stripped.
+
+Comments are also permitted using // for clarity when not using inline syntax.
+Multiline comments are reserved for descriptions as stated below.
+
+#######################################
+
+A short description may be given by using /* */.
+The opcode of the instruction must be stated after the opening /*.
+Do not start writing your description on the same line as /*.
+Do not write on the same line as */.
+
+/* INS
+This is a description of
+the INS instruction...
+*/
+INS :: A A A
+{ ... }
+#######################################
+
+You can define the same case twice with different code,
+the most appropriate version for the target CPU will be chosen.
+For example, you may define "INS :: A1 A2" twice, one using
+a single temporary register and one using no temporary registers.
+
+#######################################
+
+You can define cases for overflows too.
+
+INS :: A A A
+INS :: A A
+INS :: A
+
+May all exist in the same file.
+
+#######################################
+
+Actual example:
+
+SGE :: A A V
+{
+    SUB C B C
+    BGE A C @MSB
+}
+SGE :: A V A
+{
+    SUB B B C
+    BGE A B @MSB
+}
+SGE :: A A A
+{
+    SUB T1 B C
+    BGE A T1 @MSB
+}
+
+#######################################
+
+Another real example:
+
+AND :: A A == A {MOV A C;}
+AND :: A A <> Z {IMM A Z;}
+AND :: A A R != {NOT A B; NOT C C; NOR A A C; NOT C C;}
+AND :: A != R A {NOT B B; NOT A C; NOR A A B; NOT B B;}
+
+#######################################

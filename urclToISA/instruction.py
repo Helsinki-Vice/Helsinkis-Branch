@@ -82,7 +82,7 @@ class Instruction():
         self.labels = labels
 
     @staticmethod
-    def parse(instruction: str):
+    def parse(instruction: str) -> "Instruction | None":
         # Split the instruction based on spaces, stripping comments
         words = instruction.split()
         # Can't parse nothing
@@ -98,7 +98,7 @@ class Instruction():
         # Attempt to recognise an opcode, if can't then assume NOP
         opcode = None
         for opc in opcodes:
-            if opc == words[0]:
+            if opc == words[0].upper():
                 opcode = opc
         if not opcode:
             raise ValueError(f"Cannot parse instruction '{instruction}', unknown opcode.")
@@ -112,7 +112,7 @@ class Instruction():
 
     # ======== Instruction methods ========
 
-    def match(self, translation: "Translation"):
+    def match(self, translation: "Translation") -> "list[str] | None":
         for case in translation.cases:
             backup = self.operands
             match = True
@@ -151,13 +151,13 @@ class Instruction():
             self.operands = backup
         return None
 
-    def toString(self, indent=0):
-        out = "" if not self.labels else f"{' '.join(self.labels):>{indent}} "
-        out += f"{self.opcode}" + " ".join(op.toString() for op in self.operands)
+    def to_string(self, indent=0):
+        out = "" if not self.labels else f"{' '.join([str(label) for label in self.labels]):>{indent}} "
+        out += f"{self.opcode}" + " ".join(str(op) for op in self.operands)
         return out
 
-    def toColour(self, indent=0):
+    def to_colour(self, indent=0):
         out = Style.BRIGHT
-        out += " "*(indent+1) if not self.labels else f"{Fore.YELLOW}{' '.join(self.labels):>{indent}} {Fore.RESET}"
-        out += f"{Fore.BLUE}{self.opcode} {Style.RESET_ALL}" + " ".join(op.toColour() for op in self.operands)
+        out += " "*(indent+1) if not self.labels else f"{Fore.YELLOW}{' '.join([str(label) for label in self.labels]):>{indent}} {Fore.RESET}"
+        out += f"{Fore.BLUE}{self.opcode} {Style.RESET_ALL}" + " ".join(op.to_colour() for op in self.operands)
         return out
